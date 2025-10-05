@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 import database_models
 from models import Product
 from database import session, engine
+from sqlalchemy.orm import Session
 
 
 app = FastAPI()
@@ -75,40 +76,63 @@ def hello():
 
 
 @app.get("/product")
-def get_all_products():
-    return products
+def get_all_products(db: Session = Depends(get_db)):
+    db_products = db.query(database_models.Product).all()
+    return db_products
 
 
 @app.get("/product/{id}")
-def get_product_by_id(id: int):
-    for p in products:
-        if p.id == id:
-            return p
+def get_product_by_id(id: int, db: Session = Depends(get_db)):
+    db_product = (
+        db.query(database_models.Product)
+        .filter(database_models.Product.id == id)
+        .first()
+    )
+
+    if db_product:
+        return db_product
 
     return "Product Not found"
 
 
 @app.post("/product")
-def add_product(p: Product):
-    products.append(p)
+def add_product(p: Product, db: Session = Depends(get_db)):
+    db.add(database_models.Product(**p.model_dump()))
+    db.commit()
     return p
 
 
 @app.put("/product/{id}")
-def update_product(id: int, p: Product):
-    for i in range(len(products)):
-        if products[i].id == id:
-            products[i] = p
-            return p
+def update_product(id: int, p: Product, db: Session = Depends(get_db)):
+    db_product = (
+        db.query(database_models.Product)
+        .filter(database_models.Product.id == id)
+        .first()
+    )
 
-    return "Product Not Found"
+    if db_product:
+        db_product.name = p.name
+        db_product.description = p.description
+        db_product.price = p.price
+        db_product.quantity = p.quantity
+
+        db.commit()
+        db.refresh(db_product)
+        return db_product
+    else:
+        return "Product Not Found"
 
 
 @app.delete("/product/{id}")
-def delete_product(id: int):
-    for i in range(len(products)):
-        if products[i].id == id:
-            products.pop(i)
-            return "Product Deleted"
+def delete_product(id: int, db: Session = Depends(get_db)):
+    db_product = (
+        db.query(database_models.Product)
+        .filter(database_models.Product.id == id)
+        .first()
+    )
 
-    return "Product Not Found"
+    if db_product:
+        db.delete(db_product)
+        db.commit()
+    else:
+        return "Product Not Found"
